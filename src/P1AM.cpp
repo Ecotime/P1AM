@@ -46,12 +46,7 @@ uint8_t P1AM::init() {
 	uint32_t slots = 0;
 	int dbLoc = 0;
 	char *cfgArray;
-	uint8_t di_bytes = 0;   // Number of DI Bytes
-	uint8_t do_bytes = 0;   // Number of DO Bytes
-	uint8_t ai_bytes = 0;   // Number of AI Bytes
-	uint8_t ao_bytes = 0;   // Number of AO Bytes
-	uint8_t st_bytes = 0;   // Number of Status Bytes
-	uint8_t cfg_bytes;  	// Number of CFG Bytes
+
 	union moduleIDs{		// Use a union as a quick convert between byte arrays and ints
 		uint32_t *IDs;
 		uint8_t *byteArray;
@@ -99,7 +94,7 @@ uint8_t P1AM::init() {
 	spiSendRecvBuf(modules.byteArray,slots*4,1);		//slots * 4 bytes per ID code
 
 	uint8_t *baseControllerConstants = (uint8_t *)malloc(1 * slots * 7);//seven elements in module sign on
-	for(int i=0;i<slots;i++){
+	for(unsigned int i=0;i<slots;i++){
 		dbLoc = 0;
 		while (modules.IDs[i] != mdb[dbLoc].moduleID){		//Scan MDB for matching ID and grab its array location
 			if(mdb[dbLoc].moduleID == 0xFFFFFFFF){
@@ -111,21 +106,13 @@ uint8_t P1AM::init() {
 		baseSlot[i].dbLoc = dbLoc;		//MDB Location
 
 		//Grab MDB values and load them into variables for P1AM-100 and array to send to Base Controller
-		di_bytes  = baseControllerConstants[0+i*7]  = mdb[dbLoc].diBytes;
-		do_bytes  = baseControllerConstants[1+i*7]  = mdb[dbLoc].doBytes;
-		ai_bytes  = baseControllerConstants[2+i*7]  = mdb[dbLoc].aiBytes;
-		ao_bytes  = baseControllerConstants[3+i*7]  = mdb[dbLoc].aoBytes;
-		st_bytes  = baseControllerConstants[4+i*7]  = mdb[dbLoc].statusBytes;
-		cfg_bytes = baseControllerConstants[5+i*7]  = mdb[dbLoc].configBytes;
-					baseControllerConstants[6+i*7]  = mdb[dbLoc].dataSize;
-
-		//Zero out for next iteration of loop
-		di_bytes = 0;   // Number of DI Bytes
-		do_bytes = 0;   // Number of DO Bytes
-		ai_bytes = 0;   // Number of AI Bytes
-		ao_bytes = 0;   // Number of AO Bytes
-		st_bytes = 0;   // Number of Status Bytes
-
+		baseControllerConstants[0+i*7]  = mdb[dbLoc].diBytes;
+		baseControllerConstants[1+i*7]  = mdb[dbLoc].doBytes;
+		baseControllerConstants[2+i*7]  = mdb[dbLoc].aiBytes;
+		baseControllerConstants[3+i*7]  = mdb[dbLoc].aoBytes;
+		baseControllerConstants[4+i*7]  = mdb[dbLoc].statusBytes;
+		baseControllerConstants[5+i*7]  = mdb[dbLoc].configBytes;
+		baseControllerConstants[6+i*7]  = mdb[dbLoc].dataSize;
 	}
 
 	spiTimeout(1000*200);
@@ -137,7 +124,7 @@ uint8_t P1AM::init() {
 	free(baseControllerConstants);
 
 	#ifndef AUTO_CONFIG_OFF
-	for (int i = 0; i < slots; i++){ 	//default config routine
+	for (unsigned int i = 0; i < slots; i++){ 	//default config routine
 		dbLoc = baseSlot[i].dbLoc;
 		if(mdb[dbLoc].configBytes > 0){				//Modules with config Bytes need to havea config loaded
 			cfgArray = loadConfigBuf(mdb[dbLoc].moduleID);	//Get pointer to default config for this module
@@ -179,7 +166,6 @@ Returns: 	-uint16_t - Bitmapped representation of errors. A one in any position
 					    slot 1 and 3 would return 0x05.
 *******************************************************************************/
 uint16_t P1AM::rollCall(const char* moduleNames[], uint8_t numberOfModules){
-	uint8_t numberGoodPresent = 0;
 	uint16_t slotError = 0;
 	uint8_t dbLoc = 0;
 	bool singleError;
@@ -467,7 +453,7 @@ Parameters: -char buf[] - Pointer to an array that will hold the values read. Th
 Returns: 	-None
 *******************************************************************************/
 void P1AM::readBlockData(char buf[], uint16_t len,uint16_t offset, uint8_t type){
-	uint8_t readParams[5];
+	uint8_t readParams[6];
 
 	if((len+offset) > 1200){		//max of data array is 1200, so we can't read past that
 		len = 1200-offset;		//adjust len in case we're trying to read too far
@@ -511,7 +497,6 @@ Parameters: -char buf[] - Pointer to an array that holds the values to write. Th
 Returns: 	-None
 *******************************************************************************/
 void P1AM::writeBlockData(char buf[], uint16_t len,uint16_t offset, uint8_t type){
-	uint8_t readParams[5];
 
 	if((len+offset) > 1200){		//max of data array is 1200, so we can't read past that
 		len = 1200-offset;		//adjust len in case we're trying to read too far
@@ -944,6 +929,12 @@ bool P1AM::configureModule(char cfgData[], uint8_t slot){
 	uint8_t mdbLoc = 0;
 	uint8_t cfgForSpi[66];
 
+	if (cfgData == NULL)
+	{
+		debugPrintln("cfgData is a NULL pointer");
+		return 0;
+	}
+
 	mdbLoc = baseSlot[slot-1].dbLoc;
 	len = mdb[mdbLoc].configBytes + 2;
 	cfgForSpi[0] = CFG_HDR;
@@ -1178,7 +1169,6 @@ Returns: 	-uint8_t - Returns the slot number of the leftmost module in the base
 uint8_t P1AM::checkConnection(uint8_t numberOfModules){
 	uint8_t expectedSlots = 0;
 	uint16_t activeSlots = 0;
-	uint8_t badSlot = 0;
 	
 	if(!numberOfModules){
 		while(baseSlot[expectedSlots].dbLoc != 0){
@@ -1307,7 +1297,6 @@ void P1AM::dataSync(){
 }
 
 char *P1AM::loadConfigBuf(int moduleID){
-	char *defaultCfg;
 
 	switch(moduleID){
 		case 0x34605590:
@@ -1346,7 +1335,8 @@ char *P1AM::loadConfigBuf(int moduleID){
 		case 0x34A5A481:
 			return (char*)P1_02HSC_DEFAULT_CONFIG;
 		default:
-		debugPrintln("wut");
+			debugPrintln("wut");
+			return NULL;
 			break;
 	}
 }
@@ -1547,5 +1537,12 @@ bool P1AM::Base_Controller_FW_UPDATE(unsigned int fwLen){
 		Serial.println("Bad FW Hash and CRC");
 		Serial.println("FW Update FAIL :c");
 		return 0;
+	}
+
+	else
+	{
+		Serial.println("Unknown CRC check result");
+		Serial.println("FW Update FAIL :c");
+		return 0;		
 	}
 }
