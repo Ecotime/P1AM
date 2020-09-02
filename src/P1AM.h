@@ -33,9 +33,19 @@ SOFTWARE.
 #include "Module_List.h"
 #include "defines.h"
 
-struct channelLabel{			//Used to call functions through names rather than slot/channel numbers.
+struct channelLabel{			// Used to call functions through names rather than slot/channel numbers.
 	uint8_t slot;
 	uint8_t channel;
+};
+
+struct readResult{
+	uint32_t data = 0;			// Analog or discrete input value
+	uint8_t error = 0;			// 0: Success, > 0: Error code
+};
+
+struct readTemperatureResult{
+	float temperature = 0;
+	uint8_t error = 0;			// 0: Success, > 0: Error code
 };
 
 class P1AM{
@@ -48,10 +58,10 @@ class P1AM{
 	uint16_t rollCall(const char* moduleNames[], uint8_t numberOfModules);		//Pass in an array of module names to check if current modules in base match.
 
 	//Data IO Functions	- For more info see function headers in P1AM.cpp
-	uint32_t readDiscrete(uint8_t slot, uint8_t channel = 0);					//Read Discrete Module. Passing 0 instead of a channel will return data from all of the channels at once.
+	readResult readDiscrete(uint8_t slot, uint8_t channel = 0);					//Read Discrete Module. Passing 0 instead of a channel will return data from all of the channels at once.
 	void writeDiscrete(uint32_t data,uint8_t slot, uint8_t channel = 0);		//Write Discrete Module. Passing 0 instead of a channel will write data for all of the channels at once.
-	int readAnalog(uint8_t slot, uint8_t channel);								//Read Analog Module. Returns 32 bits of data. 16/14/12/etc bit modules are not scaled and will return a bit appropriate value.
-	float readTemperature(uint8_t slot, uint8_t channel);						//Read Temperature Module. Returns float.
+	readResult readAnalog(uint8_t slot, uint8_t channel);						//Read Analog Module. Returns 32 bits of data. 16/14/12/etc bit modules are not scaled and will return a bit appropriate value.
+	readTemperatureResult readTemperature(uint8_t slot, uint8_t channel);		//Read Temperature Module.
 	void writeAnalog(uint32_t data,uint8_t slot, uint8_t channel);				//Write Analog Module. Send up to 32 bits of data. 16/14/12/etc bit modules are masked on Base Controller
 	void readBlockData(char *buf, uint16_t len,uint16_t offset, uint8_t type);	//Read raw  data buffers. Allows for data updates for large numbers of points.
 	void writeBlockData(char *buf, uint16_t len,uint16_t offset, uint8_t type); //Write to raw data buffers. Allows for data updates for large numbers of points.
@@ -83,10 +93,10 @@ class P1AM{
 	bool Base_Controller_FW_UPDATE(unsigned int fwLen);		//For FW update of Base Controller
 	
 	//Label functions - functionally the same as the above Data IO but use the channelLabel datatype for easier to read code.
-	uint32_t readDiscrete(channelLabel label);
+	readResult readDiscrete(channelLabel label);
 	void writeDiscrete(uint32_t data, channelLabel label);
-	int readAnalog(channelLabel label);
-	float readTemperature(channelLabel label);
+	readResult readAnalog(channelLabel label);
+	readTemperatureResult readTemperature(channelLabel label);
 	void writeAnalog(uint32_t data, channelLabel label);
 	void writePWM(float duty,uint32_t freq, channelLabel label);
 	void writePWMDuty(float duty, channelLabel label);

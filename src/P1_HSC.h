@@ -39,6 +39,13 @@ SOFTWARE.
 #define negativeDirection 0
 #define positiveDirection 1
 
+enum class rollOverEvent{
+	ROLL_UNDER = -1,
+	NO_EVENT = 0,
+	ROLL_OVER = 1,
+	ERROR = 2
+};
+
 class P1_HSC_Channel{
 
 	public:
@@ -56,10 +63,10 @@ class P1_HSC_Channel{
 
 
 	//Reading Functions
-	int readPosition(void); 	//Returns the current position
-	uint32_t readAlerts(void);	//Returns alert status bits of channel
-	int readRollOver(void);		//Function to be used for polling. Returns 1 for over,-1 for under, 0 for no rollover
-	uint8_t readInputs(void);	//Read the 4 inputs that correspond to the channel
+	readResult readPosition(void); 	//Returns the current position
+	readResult readAlerts(void);	//Returns alert status bits of channel
+	rollOverEvent readRollOver(void);		//Function to be used for polling. Returns 1 for over,-1 for under, 0 for no rollover
+	readResult readInputs(void);	//Read the 4 inputs that correspond to the channel
 
 	//Writing Functions
 	void setPosition(int counts);			//Sets current position to this value
@@ -90,7 +97,7 @@ class P1_HSC_Module{
 	bool status4IN;
 
 	//User Functions
-	uint8_t readInputs(void);		//Return bitmapped output and updates the status bool properties
+	readResult readInputs(void);		//Return bitmapped output and updates the status bool properties
 	void configureChannels(void);	//intialises module with configuration of CNT1 and CNT2
 	void configureChannels(P1_HSC_Channel CH1, P1_HSC_Channel CH2);	//Init option for custom channel class instances
 

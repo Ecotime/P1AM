@@ -127,27 +127,34 @@ Description: Reads the 8 inputs of the P1-02HSC and returns the value as a
 			 
 Parameters: -none
 			 
-Returns: 	- uint8_t reading - value in the range of 8 bits representing the
+Returns: 	readResult structure composed of
+				-uint32_t data - value in the range of 8 bits representing the
 			  state of each input
+				-uint8_t error - 0: Success, > 0: error code	
 
 Example Code: 
 *******************************************************************************/
-uint8_t P1_HSC_Module::readInputs(void){
-	uint8_t reading = 0;
+readResult P1_HSC_Module::readInputs(void){
+
+	readResult result;
 	
-	reading = P1.readDiscrete(slotNumber);
-	inputStatus = reading & 0xFF;
+	result = P1.readDiscrete(slotNumber);
+
+	if (!result.error){
+		result.data &= 0xFF;
+		inputStatus = result.data;
+		
+		status1A  = (result.data & 0x01);
+		status1B  = (result.data & 0x02) >> 1;
+		status1Z  = (result.data & 0x04) >> 2;
+		status3IN = (result.data & 0x08) >> 3;
+		status2A  = (result.data & 0x10) >> 4;
+		status2B  = (result.data & 0x20) >> 5;
+		status2Z  = (result.data & 0x40) >> 6;
+		status4IN = (result.data & 0x80) >> 7;
+	}
 	
-	status1A  = (reading & 0x01);
-	status1B  = (reading & 0x02) >> 1;
-	status1Z  = (reading & 0x04) >> 2;
-	status3IN = (reading & 0x08) >> 3;
-	status2A  = (reading & 0x10) >> 4;
-	status2B  = (reading & 0x20) >> 5;
-	status2Z  = (reading & 0x40) >> 6;
-	status4IN = (reading & 0x80) >> 7;
-	
-	return reading;
+	return result;
 }
 
 /*******************************************************************************	
@@ -176,13 +183,15 @@ Description: Reads the current positon of the channel in counts. Value is a
 			 
 Parameters: -none
 			 
-Returns: 	-int current position in counts
+Returns: 	readResult structure composed of
+				-uint32_t data - current position in counts
+				-uint8_t error - 0: Success, > 0: error code	
 
 Example Code: 
 *******************************************************************************/
-int P1_HSC_Channel::readPosition(void){
+readResult P1_HSC_Channel::readPosition(void){
 	
-	return (int)P1.readAnalog(slotNumber,channelNumber);
+	return P1.readAnalog(slotNumber,channelNumber);
 	
 }
 
@@ -272,15 +281,16 @@ Description: Function to use when polling for a rollover event. This flag will
 							
 Parameters: -none
 			 
-Returns: 	-int rollover event. Returns 1 for roll-over, -1 for roll-under, 0 for
-			 no event
+Returns: 	-rollOverEvent enum - 1 for roll-over, -1 for roll-under, 0 for
+			 no event, 2 for error
 			 
 
 Example Code: 
 *******************************************************************************/
-int P1_HSC_Channel::readRollOver(void){
+rollOverEvent P1_HSC_Channel::readRollOver(void){
 	uint8_t registerOffset = 0;
 	int statusValue = 0;
+	readResult result;
 	
 	if(channelNumber == 1){
 		registerOffset = 4;
@@ -289,26 +299,45 @@ int P1_HSC_Channel::readRollOver(void){
 		registerOffset = 5;
 	}
 	
-	statusValue = P1.readAnalog(slotNumber,registerOffset);	
-	statusValue = (statusValue & 0x3000000) >> 24;
+	result = P1.readAnalog(slotNumber,registerOffset);	
 
-	if(statusValue == 0b10){
-		while(statusValue == 0b10){
-			statusValue = P1.readAnalog(slotNumber,registerOffset);	
-			statusValue = (statusValue & 0x3000000) >> 24;
+	if (!result.error){
+		statusValue = result.data;
+		statusValue = (statusValue & 0x3000000) >> 24;
+
+		if(statusValue == 0b10){
+			while(statusValue == 0b10){
+				result = P1.readAnalog(slotNumber,registerOffset);
+				if (!result.error){
+					statusValue = result.data;
+					statusValue = (statusValue & 0x3000000) >> 24;
+				}
+				else{
+					
+				}
+			}
+			return rollOverEvent::ROLL_UNDER; 	//Rolled under
 		}
-		return -1; 	//Rolled under
-	}
-	else if(statusValue == 0b01){
-		
-		while(statusValue == 0b01){
-			statusValue = P1.readAnalog(slotNumber,registerOffset);	
-			statusValue = (statusValue & 0x3000000) >> 24;
+		else if(statusValue == 0b01){
+			
+			while(statusValue == 0b01){
+				result = P1.readAnalog(slotNumber,registerOffset);	
+				if (!result.error){
+					statusValue = result.data;
+					statusValue = (statusValue & 0x3000000) >> 24;
+				}
+				else{
+					return rollOverEvent::ERROR;
+				}
+			}
+			return rollOverEvent::ROLL_OVER;	//Rolled Over
 		}
-		return 1;	//Rolled Over
+		else{
+			return rollOverEvent::NO_EVENT;	//No Rolls :(
+		}
 	}
 	else{
-		return 0;	//No Rolls :(
+		return rollOverEvent::ERROR;
 	}
 }
 
@@ -319,25 +348,30 @@ Description: Reads the 4 inputs of the P1-02HSC channel selected and returns
 			 
 Parameters: -none
 			 
-Returns: 	- uint8_t reading - value in the range of 4 bits representing the
+Returns: 	readResult structure composed of
+				-uint32_t data - value in the range of 4 bits representing the
 			  state of each input
+				-uint8_t error - 0: Success, > 0: error code	
 
 Example Code: 
 *******************************************************************************/
-uint8_t P1_HSC_Channel::readInputs(void){
-	uint8_t reading = 0;
-	
-	reading = P1.readDiscrete(slotNumber) & 0xFF;
-	
-	if(channelNumber == 1){
-		reading &= 0xF;		//Mask lower 4 bits for channel 1
+readResult P1_HSC_Channel::readInputs(void){
+	readResult result;
+
+	result = P1.readDiscrete(slotNumber);
+
+	if (!result.error){
+		result.data &= 0xFF;
+		
+		if(channelNumber == 1){
+			result.data &= 0xF;		//Mask lower 4 bits for channel 1
+		}
+		else{
+			result.data = result.data>>4;	//Keep upper 4 bits for channel 2
+		}
 	}
-	else{
-		reading = reading>>4;	//Keep upper 4 bits for channel 2
-	}
-	
-	
-	return reading;
+
+	return result;
 }
 
 /*******************************************************************************	
@@ -345,13 +379,15 @@ Description: Returns the alert status bit for the channel specified.
 							
 Parameters: -none
 			 
-Returns: 	-uint32_t value of the status register. See online documentation for
-			 more information.
+Returns: 	readResult structure composed of
+				-uint32_t data - value of the status register. See online 
+				documentation for more information.
+				-uint8_t error - 0: Success, > 0: error code
 			 
 
 Example Code: 
 *******************************************************************************/
-uint32_t P1_HSC_Channel::readAlerts(void){
+readResult P1_HSC_Channel::readAlerts(void){
 	uint8_t registerOffset = 0;
 	
 	if(channelNumber == 1){

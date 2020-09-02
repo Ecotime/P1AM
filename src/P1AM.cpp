@@ -210,32 +210,37 @@ Parameters: -uint8_t slot - Slot to read from. Slots start at 1.
 			  If left out or 0, reads "data" from all channels where
 			  least Signficant bit is channel 1.
 
-Returns: 	-uint32_t data read from the module
+Returns: 	readResult structure composed of
+				-uint32_t data read from the module
+				-uint8_t error	0: Success, > 0: error code
 *******************************************************************************/
-uint32_t P1AM::readDiscrete(uint8_t slot, uint8_t channel){
-	uint32_t data = 0;
+readResult P1AM::readDiscrete(uint8_t slot, uint8_t channel){
 	uint8_t len = 0;
 	uint8_t mdbLoc = 0;
 	char rData[4] = {0,0,0,0};
+	readResult result;
 
 	mdbLoc = baseSlot[slot-1].dbLoc;
 	len = mdb[mdbLoc].diBytes;
 
 	if((slot < 1) || (slot > 15)){
 		debugPrintln("Slots must be between 1 and 15");
-		return 0;
+		result.error = 1;
+		return result;
 	}
 
 	if((len <= 0)){
 		debugPrint("Slot ");
 		debugPrint(slot);
 		debugPrintln(": This module has no Discrete Input bytes");
-		return 0;
+		result.error = 2;
+		return result;
 	}
 
 	if(channel > (len * 8)){		//8 channels per byte
 		debugPrintln("This channel is not valid");
-		return 0;
+		result.error = 3;
+		return result;
 	}
 
 	rData[0] = READ_DISCRETE_HDR;
@@ -244,21 +249,22 @@ uint32_t P1AM::readDiscrete(uint8_t slot, uint8_t channel){
 	memset(rData,0,4);		//clear buffer
 	if(spiTimeout(1000*200) == true){
 		spiSendRecvBuf((uint8_t *)rData,len,true);
-		data  = (rData[3]<<24);
-		data += (rData[2]<<16);
-		data += (rData[1]<<8);
-		data += (rData[0]<<0);
+		result.data = (rData[3]<<24);
+		result.data += (rData[2]<<16);
+		result.data += (rData[1]<<8);
+		result.data += (rData[0]<<0);
 
 		if(channel != 0){
-			data = (data>>(channel-1)) & 1;	// shift and mask
+			result.data = (result.data>>(channel-1)) & 1;	// shift and mask
 		}
 		dataSync();
-		return data;
+		return result;
 	}
 	else{
 		debugPrintln("Slow read");
 		delay(100);
-		return 0;
+		result.error = 4;
+		return result;
 	}
 }
 
@@ -325,33 +331,38 @@ Description: Read a single analog input module channel.
 Parameters: -uint8_t slot - Slot to read from. Slots start at 1.
 			-uint8_t channel - Channel to read from. Channels start at 1.
 
-Returns: 	-uint32_t - Value of channel in counts. 12-bit returns 0-4095,
-			 16-bit returns between 0-65535, etc.
+Returns: 	readResult structure composed of
+				-uint32_t data - Value of channel in counts. 12-bit returns 0-4095,
+				 16-bit returns between 0-65535, etc.
+				-uint8_t error - 0: Success, > 0: error code
 *******************************************************************************/
-int P1AM::readAnalog(uint8_t slot, uint8_t channel){
-	int data = 0;
+readResult P1AM::readAnalog(uint8_t slot, uint8_t channel){
 	uint8_t len = 0;
 	uint8_t mdbLoc = 0;
 	char rData[4] = {0,0,0,0};
+	readResult result;
 
 	mdbLoc = baseSlot[slot-1].dbLoc;
 	len = mdb[mdbLoc].aiBytes;
 
 	if((slot < 1) || (slot > 15)){
 		debugPrintln("Slots must be between 1 and 15");
-		return 0;
+		result.error = 1;
+		return result;
 	}
 
 	if((len <= 0)){
 		debugPrint("Slot ");
 		debugPrint(slot);
 		debugPrintln(": This module has no Analog Input bytes");
-		return 0;
+		result.error = 2;
+		return result;
 	}
 
 	if((channel <= 0) || (channel > (len / 4))){		//4 bytes per channel
 		debugPrintln("This channel is not valid");
-		return 0;
+		result.error = 3;
+		return result;
 	}
 
 	rData[0] = READ_ANALOG_HDR;
@@ -360,14 +371,15 @@ int P1AM::readAnalog(uint8_t slot, uint8_t channel){
 	spiSendRecvBuf((uint8_t *)rData,3);
 
 	if(spiTimeout(1000*200) == true){
-		data = spiSendRecvInt(DUMMY);
+		result.data = spiSendRecvInt(DUMMY);
 		dataSync();
-		return data;
+		return result;
 	}
 	else{
 		debugPrintln("Slow read");
 		delay(100);
-		return 0;
+		result.error = 4;
+		return result;
 	}
 }
 
@@ -376,17 +388,22 @@ Description: Read a single temperature input module channel.
 
 Parameters: -uint8_t slot - Slot to read from. Slots start at 1.
 			-uint8_t channel - Channel to read from. Channels start at 1.
-Returns: 	-Value of channel in degrees for temperature. mV for voltages.
+Returns: 	readTemperatureResult structure composed of
+				-float -Value of channel in degrees for temperature. mV for voltages.
+				-uint8_t error	0: Success, > 0: error code
 *******************************************************************************/
-float P1AM::readTemperature(uint8_t slot, uint8_t channel){
-	union int2float{
-		int data;			//We get an int back no matter what analog module. Unions set variables as the same/
-		float temperature;	//Floats and Ints are both 32 bits, so this lets quickly convert our int to a float.
-	}ourValue;
+readTemperatureResult P1AM::readTemperature(uint8_t slot, uint8_t channel){
+	readResult result;			// Required to store the result of the readAnalog finction
+	readTemperatureResult temperatureResult;
 
-	ourValue.data = readAnalog(slot,channel);	//Use the same analog read function to get int
+	// Read the input as if it was a uint32_t but it is actually a 32 bits float
+	result = readAnalog(slot,channel);
 
-	return ourValue.temperature;		//return the float
+	// Copy the result in the output variable and typecast to float
+	temperatureResult.error = result.error;
+	temperatureResult.temperature = (float)result.data;
+
+	return temperatureResult;
 }
 
 /*******************************************************************************
@@ -1202,7 +1219,7 @@ P1.readDiscrete(sens_1). They are functionally the same, so if you want to gain
 a better understanding of the inner workings, please check out the actual
 function code in the above portion of this library.
 *******************************************************************************/
-uint32_t P1AM::readDiscrete(channelLabel label){
+readResult P1AM::readDiscrete(channelLabel label){
 	return readDiscrete(label.slot,label.channel);
 }
 
@@ -1211,11 +1228,11 @@ void P1AM::writeDiscrete(uint32_t data, channelLabel label){
 	return;
 }
 
-int P1AM::readAnalog(channelLabel label){
+readResult P1AM::readAnalog(channelLabel label){
 	return readAnalog(label.slot,label.channel);
 }
 
-float P1AM::readTemperature(channelLabel label){
+readTemperatureResult P1AM::readTemperature(channelLabel label){
 	return readTemperature(label.slot,label.channel);
 }
 
